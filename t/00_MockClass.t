@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 #		Test script for Test::MockClass
-#		$Id: 00_MockClass.t,v 1.2 2005/02/16 20:40:43 phaedrus Exp $
+#		$Id: 00_MockClass.t,v 1.3 2005/02/18 21:16:20 phaedrus Exp $
 #
 #		Before `make install' is performed this script should be runnable with
 #		`make test'. After `make install' it should work as `perl test.pl'
@@ -248,6 +248,16 @@ my @testSuite = (
 												$result = &FakeClass::flipflop();
 											});
 						 assert($result == 0);
+						 assertNoException( sub {
+												$mainObject->setReturnValues('randomUser', 'random', (0..9));
+											});
+						 assertNoException( sub {
+												$result = &FakeClass::randomUser();
+											});
+						 assert($result =~ m{\d});
+						 assert($result >= 0);
+						 assert($result < 10);
+#						 print "result: $result\n";
  					 },
  				 },
 

@@ -7,12 +7,14 @@
 
 =head1 SYNOPSIS
 
-    BEGIN {
+    # Pass in the class name and version that you want to mock
+    use Test::MockClass qw{ClassToMock 1.1};
 
-    use Test::MockClass;
-
-    # create a MockClass object to handle a specific class, and create that class
+    # create a MockClass object to handle a specific class
     my $mockClass = Test::MockClass->new('ClassToMock');
+
+    # specify to inherit from a real class, or a mocked class:
+    $mockClass->inheritFrom('IO::Socket');
 
     # make a constructor for the class, can also use 'addMethod' for more control
     $mockClass->defaultConstructor(%classWideDefaults);
@@ -29,8 +31,13 @@
     # set the desired call order for the methods:
     $mockClass->setCallOrder('methodname2', 'methodname', 'methodname');
 
-    # run tests using the mock object:
-    $testedObject->messWith( $mockObject );
+    # run tests using the mock Class elsewhere:
+    #:in the class to test:
+    sub objectFactory {
+        return ClassToMock->new;
+    }
+    #:in your test code:
+	assert($testObj->objectFactory->isa("ClassToMock"));
 
     # get the object Id for the rest of the methods:
     my $objectId = "$mockObject";
@@ -51,8 +58,6 @@
     # get the list of accesses made to a particular attribute (hashkey in $mockObject)
     my @accesses = $mockClass->getAttributeAccess($objectId, 'attribute');
 
-    }
-
 =head1 EXPORTS
 
 Nothing by default.
@@ -63,15 +68,29 @@ The Hook::WrapSub manpage, the Tie::Watch manpage, the Scalar::Util manpage.
 
 =head1 DESCRIPTION
 
-This module provides a simple interface for creating mock objects with mock methods blessed into mock classes for mock purposes, I mean testing purposes.  It also provides a simple mechanism for tracking the interactions to the mocked objects.  The major caveat is that you must do all of this class building in a BEGIN block, otherwise the mock class won't replace the real class that you are mocking.
+This module provides a simple interface for creating mock classes and mock objects with mock methods for mock purposes, I mean testing purposes.  It also provides a simple mechanism for tracking the interactions to the mocked objects.  I originally wrote this class to help me test object factory methods, since then, I've added some more features.  This module is hopefully going to be the Date::Manip of mock class/object creation, so email me with lots of ideas, everything but the kitchen sink will go in!
 
 =head1 METHODS
 
+=head2 import
+
+This method is called when you use the class.  It optionally takes a list of classes to mock:
+
+  use Test::MockClass qw{IO::Socket File::Finder DBI};
+
+You can also specify the version numbers for the classes:
+
+  use Test::MockClass qw{DBD::mysql 1.1 Apache::Cookie 1.2.1}
+
+This use fools perl into thinking that the class/module is already loaded, so it will override any use statement within the code that you're trying to test.
+
 =head2 new
 
-The Test::MockClass constructor.  It has one required argument which is the name of the class to mock.  It also optionally takes a version number as a second argument.  It returns a Test::MockClass object, which is the interface for all of the method making and tracking for mock objects created later.
+The Test::MockClass constructor.  It has one required argument which is the name of the class to mock.  It also optionally takes a version number as a second argument (this version will override any passed to the use statement).  It returns a Test::MockClass object, which is the interface for all of the method making and tracking for mock objects created later.
 
     my $mockClass = Test::MockClass->new('ClassToMock', '1.1');
+
+If no version is specified in either the use statement or the call to new, it defaults to -1.
 
 =head2 addMethod
 
@@ -97,36 +116,51 @@ My laziness often extends beyond the simple constructor to the methods of the mo
 
 =item true
 
-  This specifies that the method should always return true (1).
+This specifies that the method should always return true (1).
+
+  $mockClass->setReturnValues('trueMethod', 'true');
+  if($mockObject->trueMethod) {}
 
 =item false
 
-  This specifies that the method should always return false (0).
+This specifies that the method should always return false (0).
+
+  $mockClass->setReturnValues('falseMethod', 'false');
+  unless($mockObject->falseMethod) {}
 
 =item undef
 
-  This specifies that the method should always return undef.
+This specifies that the method should always return undef.
+
+  $mockClass->setReturnValues('undefMethod', 'undef');
+  if(defined $mockObject->undefMethod) {}
 
 =item always
 
-  This specifies that the method should always return all of the rest of the arguments to setReturnValues.
+This specifies that the method should always return all of the rest of the arguments to setReturnValues.
+
+  $mockClass->setReturnValues('alwaysFoo', 'always', 'foo');
+  $mockClass->setReturnValues('alwaysFooNBar', 'always', 'foo', 'bar');
 
 =item series
 
-  This specifies that the method should return 1 each of the rest of the arguments per method invocation until the arguments have all been used, then it returns undef.
+This specifies that the method should return 1 each of the rest of the arguments per method invocation until the arguments have all been used, then it returns undef.
+
+  $mockClass->setReturnValues('aFewGoodMen', 'series', 'Abraham', 'Martin', 'John');
 
 =item cycle
 
-  This specifies that the method should return 1 each of the rest of the arguments per method invocation, once all have been used it starts over at the beginning.
+This specifies that the method should return 1 each of the rest of the arguments per method invocation, once all have been used it starts over at the beginning.
+
+  $mockClass->setReturnValues('boybands', 'cycle', 'BackAlley-Bros', 'OutOfSync', 'OldKidsOverThere');
+
+=item random
+
+This specifies that the method should return a random value from the list.  Well, as random as perl's srand/rand can get it anyway.
+
+  $mockClass->setReturnValues('userInput', 'random', (0..9));
 
 =back
-
-
-    $mockClass->setReturnValues('trueMethod', 'true');
-    $mockClass->setReturnValues('alwaysFoo', 'always', 'foo');
-    $mockClass->setReturnValues('alwaysFooNBar', 'always', 'foo', 'bar');
-    $mockClass->setReturnValues('aFewGoodMen', 'series', 'Abraham', 'Martin', 'John');
-    $mockClass->setReturnValues('boybands', 'cycle', 'BackAlley-Bros', 'OutOfSync', 'OldKidsOverThere');
 
 =head2 setCallOrder
 
@@ -200,16 +234,28 @@ You want to use defaultConstructor or create, but you don't want to use 'new' as
     $mockClass->defaultConstructor(); # installs 'create'.
     my $mockObject = MockClass->create(); # calls 'create' on mocked class.
 
+=head2 inheritFrom
+
+This method allows your mock class to inherit from other mock classes or real classes.  Since it basically just uses perl's inheritence, it's pretty transparent.  And yes, it does support multiple inheritence, though you don't have to use it if you don't wanna.
+
 =head1 TODO
 
-Make Test::MockClass less hash-centric, stop breaking Tie::Watch's encapsulation, provide mock objects with an interface to their own tracking, make tracking and noTracking more fine-grained, maybe find a safe way to clean up namespaces after the maker object goes out of scope, write tests for arrayref and scalarref based objects, write tests for unusual objects (regular expression, typeglob, filehandle, etc.)
+Figure out how to add simple export/import mechanisms for mocked classes.  Make Test::MockClass less hash-centric. Stop breaking Tie::Watch's encapsulation. Provide mock objects with an interface to their own tracking. Make tracking and noTracking more fine-grained. Maybe find a safe way to clean up namespaces after the maker object goes out of scope. Write tests for arrayref and scalarref based objects. Write tests for unusual objects (regular expression, typeglob, filehandle, etc.)
+
+=head1 SEE ALSO
+
+=item Alternatives: L<Test::MockObject>, L<Test::MockMethod>
+
+=item Testing systems: L<Test::Simple>, L<Test::More>, L<Test::Builder>, L<Test::Harness>
+
+=item xUnit testing: L<Test::SimpleUnit>, L<Test::Unit>, L<Test::Class>
 
 =head1 AUTHOR
 
 Jeremiah Jordan E<lt>jjordan@perlreason.comE<gt>
 
 Inspired by Test::MockObject by chromatic, and by Test::Unit::Mockup (ruby) by Michael Granger.
-Both of whom were probably inspired by other people (J-unit, Xunit types maybe?)
+Both of whom were probably inspired by other people (J-unit, Xunit types maybe?) which all goes back to that sUnit guy.  Thanks to Stevan Little for the constructive criticism.
 
 Copyright (c) 2002, 2003, 2004, 2005 perl Reason, LLC. All Rights Reserved.
 
@@ -233,8 +279,8 @@ BEGIN {
 	### Versioning stuff and custom includes
 	use vars qw{$VERSION $RCSID};
   
-	$VERSION	= do { my @r = (q$Revision: 1.3 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
-	$RCSID		= q$Id: MockClass.pm,v 1.3 2005/02/16 20:40:43 phaedrus Exp $;
+	$VERSION	= do { my @r = (q$Revision: 1.4 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+	$RCSID		= q$Id: MockClass.pm,v 1.4 2005/02/18 21:16:20 phaedrus Exp $;
 	use Carp;
 	use Hook::WrapSub qw{wrap_subs unwrap_subs};
 	use Tie::Watch;
@@ -248,7 +294,49 @@ BEGIN {
 ###	 C O N F I G U R A T I O N	 ( G L O B A L S )
 ###############################################################################
 use vars qw{};
+our %classesToMock = ();
 
+# the sole purpose of this import is to make perl believe that the classes passed in are already loaded.
+sub import {
+	my $class = shift;
+	return unless(scalar(@_));
+
+	# two ways to call,
+	# hash way with ClassName => version number
+	# or ClassName, ClassName, ClassName
+
+	if(scalar(@_) % 2) { # odd
+		foreach my $ctom (@_) {
+			$classesToMock{$ctom} = -1; #set the version.
+		}
+	} else { # even
+		# even could still be classes
+		if($_[1] =~ m{^[0-9\.-]+$}) { # second arg looks like a version number
+			%classesToMock = @_;
+		} else {
+			foreach my $ctom (@_) {
+				$classesToMock{$ctom} = -1; #set the version.
+			}
+		}
+	}
+	no strict 'refs';
+
+	foreach my $classToMock (keys %classesToMock) {
+		my $filename = $classToMock;
+		$filename =~ s{::}{/}g;
+
+		# fool %INC into thinking it loaded it already:
+		$INC{"$filename.pm"} = 1;
+
+		# make a fake version:
+		my $version = $classesToMock{$classToMock};
+		# I'm not sure if this does anything:
+#		${$filename . '::' }{VERSION} = $version;
+		${$classToMock . '::' . 'VERSION'} = $version;
+		# it's probably silly to explicitly add universal, but...
+		push(@{$classToMock . '::' . 'ISA'}, 'UNIVERSAL');
+	}
+}
 
 
 ###############################################################################
@@ -285,25 +373,32 @@ sub new {
 				'Test::MockClass::__currentObjectIdIndex'						=> 0,
 			   };
 	bless($self, $class);
-	# mock the class:
-	# get the filename:
-	my $filename = $classToMock;
-	$filename =~ s{::}{/}g;
 
-	# fool %INC into thinking it loaded it already:
-	$INC{"$filename.pm"} = 1;
+	# don't do all this stuff if we already loaded this class:
+	unless(exists($classesToMock{$classToMock})) {
+		my $filename = $classToMock;
+		$filename =~ s{::}{/}g;
 
-	# make a fake version:
-	$version ||= -1;
+		# fool %INC into thinking it loaded it already:
+		$INC{"$filename.pm"} = 1;
+
+		# make a fake version:
+		$version ||= -1;
+		$classesToMock{$classToMock} = $version;
+		{
+			no strict 'refs';
+			no warnings 'redefine';
+			# I'm not sure if this does anything:
+			${$filename . '::' }{VERSION} = $version;
+			${$classToMock . '::' . 'VERSION'} = $version;
+			# it's probably silly to explicitly add universal, but...
+			push(@{$classToMock . '::' . 'ISA'}, 'UNIVERSAL');
+		}
+	}
+
 	{
 		no strict 'refs';
 		no warnings 'redefine';
-		# I'm not sure if this does anything:
-		${$filename . '::' }{VERSION} = $version;
-		${$classToMock . '::' . 'VERSION'} = $version;
-		# it's probably silly to explicitly add universal, but...
-		push(@{$classToMock . '::' . 'ISA'}, 'UNIVERSAL');
-
 		# we have to create a special method that will return the self to any mocked objects (so that the wrappers can have access to it:
 		my $weakSelf = $self;
 		weaken($weakSelf);
@@ -320,7 +415,7 @@ sub inheritFrom {
 	my $className = shift;
 	my $classToMock = $self->{'Test::MockClass::__mockClass'};
 	no strict 'refs';
-	push(@{"${classToMock}::ISA"}, $className);
+	push(@{"${classToMock}::ISA"}, $className, @_);
 }
 
 ### METHOD: defaultConstructor(%classWideDefaults)
@@ -403,6 +498,7 @@ sub setReturnValues {
 						  always => sub { (scalar(@values) == 1) ? return $values[0] : return wantarray ? @values : \@values; },
 						  series => sub { return shift(@values); },
 						  cycle => sub { my $val = shift(@values); push(@values, $val); return $val; },
+						  random => sub { srand; return($values[int(rand(scalar(@values)))]); },
 						 );
 	my $code = $defaultMethods{$type};
 	$self->tattle("Invalid algorythm type!\n") unless(ref($code) eq 'CODE');
