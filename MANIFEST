@@ -1,0 +1,5 @@
+lib/Test/MockClass.pm
+Makefile.PL
+MANIFEST
+META.yml
+t/00_MockClass.t
