@@ -1,4 +1,3 @@
-.emacs.desktop
 lib/Test/MockClass/MyClass.pm
 lib/Test/MockClass.pm
 Makefile.PL

@@ -279,8 +279,8 @@ BEGIN {
 	### Versioning stuff and custom includes
 	use vars qw{$VERSION $RCSID};
   
-	$VERSION	= do { my @r = (q$Revision: 1.4 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
-	$RCSID		= q$Id: MockClass.pm,v 1.4 2005/02/18 21:16:20 phaedrus Exp $;
+	$VERSION	= do { my @r = (q$Revision: 1.5 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+	$RCSID		= q$Id: MockClass.pm,v 1.5 2005/02/18 21:16:20 phaedrus Exp $;
 	use Carp;
 	use Hook::WrapSub qw{wrap_subs unwrap_subs};
 	use Tie::Watch;
